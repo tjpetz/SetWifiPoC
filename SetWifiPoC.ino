@@ -38,6 +38,17 @@
 
 #include <ArduinoBLE.h>
 #include <WiFiNINA.h>
+#include <FlashAsEEPROM.h>
+
+typedef struct {
+  char ssid[128];
+  char wifiPwd[128];
+  char configPwd[128];
+  bool locked;
+} Configuration;
+
+// Reserve the flash storage
+FlashStorage(flash_configuration, Configuration);
 
 // default wifi password and secret, used when not in the EEPROM, useful as a testing shortcut
 #include "arduino_secret.h"
@@ -56,6 +67,7 @@ BLEBooleanCharacteristic configurationIsLocked("e5add166-af0e-4c54-9121-4a34371c
 String wifiNetworkSSID = "";
 String wifiPassword = "";
 String configurationLockPassword = "";
+bool configurationLocked = false;
 
 // A simple wifi service to ping a server
 BLEService wifiPing("6e1de8ff-a379-4cbc-b4aa-8bb627c9a2af");
@@ -66,13 +78,29 @@ void setup() {
   Serial.begin(250000);
   while (!Serial);
 
+  // Check EEPROM for a configuration
+  Configuration config;
+
+  config = flash_configuration.read();
+  if(config.locked) {
+    Serial.println("Loading configuration");
+    Serial.print("ssid = "); Serial.println(config.ssid);
+    Serial.print("pwd = "); Serial.println(config.wifiPwd);
+    Serial.print("configPWD = "); Serial.println(config.configPwd);
+    wifiNetworkSSID = config.ssid;
+    wifiPassword = config.wifiPwd;
+    configurationLockPassword = config.configPwd;
+    configurationLocked = true;
+  } else {
+    Serial.println("No Existing Configuration - using default");
+    wifiNetworkSSID = default_ssid;
+    wifiPassword = default_pass;
+  }
+  
   pinMode(LED_BUILTIN, OUTPUT);
 
-//  BLE.begin();
   configureBLE();
   startBLE();
-//  BLE.addService(wifiSettingService);
-//  BLE.advertise();
   
   Serial.println("Finishing Setup"); 
 }
@@ -85,19 +113,18 @@ void configureBLE() {
 
   wifiSettingService.addCharacteristic(wifiSSID);
   wifiSSID.setEventHandler(BLEWritten, wifiSSIDWritten);
-  wifiSSID.writeValue(default_ssid);
+  wifiSSID.writeValue(wifiNetworkSSID);
 
   wifiSettingService.addCharacteristic(wifiPWD);
   wifiPWD.setEventHandler(BLEWritten, wifiPWDWritten);
-  wifiPWD.writeValue(default_pass);
-
+ 
   wifiSettingService.addCharacteristic(configurationLock);
   configurationLock.setEventHandler(BLEWritten, configurationLockWritten);
   configurationLock.writeValue("");
 
   wifiSettingService.addCharacteristic(configurationIsLocked);
   configurationIsLocked.setEventHandler(BLERead, configurationIsLockedRead);
-  configurationIsLocked.writeValue(false);
+  configurationIsLocked.writeValue(configurationLocked);
 
   wifiSettingService.addCharacteristic(configurationUnlock);
   configurationUnlock.setEventHandler(BLEWritten, configurationUnlockWritten);
@@ -140,19 +167,31 @@ void blePeripheralDisconnect(BLEDevice central) {
 
 void wifiSSIDWritten(BLEDevice central, BLECharacteristic characteristic) {
   Serial.print("WiffiSSID written: ");
-  Serial.println(wifiSSID.value());
+  if (!configurationLocked) {
+    wifiNetworkSSID = wifiSSID.value();
+    Serial.println(wifiNetworkSSID);
+  } else {
+    Serial.print(" - CONFIGURATION LOCKED - "); Serial.println(wifiSSID.value());
+  }
 }
 
 void wifiPWDWritten(BLEDevice central, BLECharacteristic characteristic) {
   Serial.print("WifiPWD written: ");
-  Serial.println(wifiPWD.value());
+  if (!configurationLocked) {
+    wifiPassword = wifiPWD.value();
+    Serial.println(wifiPassword);
+  } else {
+    Serial.print(" - CONFIGURATION LOCKED - "); Serial.println(wifiPWD.value());
+  }
 }
 
 void configurationLockWritten(BLEDevice central, BLECharacteristic characteristic) {
-  if (!configurationIsLocked.value()) {
+  if (!configurationLocked) {
     Serial.println("Locking configuration");
     configurationLockPassword = configurationLock.value();
     configurationIsLocked.writeValue(true);
+    configurationLocked = true;
+    saveConfigurationToEEPROM();
   } else {
     Serial.println("Configuration is already locked, cannot change lock password");
   }
@@ -160,10 +199,11 @@ void configurationLockWritten(BLEDevice central, BLECharacteristic characteristi
 
 void configurationUnlockWritten(BLEDevice central, BLECharacteristic characteristic) {
   Serial.println("Attempting to unlock");
-  if(configurationIsLocked.value() == 1) {
+  if(configurationIsLocked) {
     if(configurationLockPassword == configurationUnlock.value()) {
       Serial.println("Unlocking configuration");
       configurationIsLocked.writeValue(false);
+      configurationLocked = false;
     } else {
       Serial.println("Invalid unlock password");
     }
@@ -185,7 +225,7 @@ void pingTargetWritten(BLEDevice central, BLECharacteristic characteristic) {
   // To ping a target we need to end the bluetooth, start the wifi, ping the target
   // save the results in the pingRTT characteristic, turn off wifi and restart BLE.
   BLE.end();
-  while (WiFi.begin(wifiSSID.value().c_str(), wifiPWD.value().c_str()) != WL_CONNECTED) {
+  while (WiFi.begin(wifiNetworkSSID.c_str(), wifiPassword.c_str()) != WL_CONNECTED) {
     Serial.println("Waiting for WiFi to connect.");
     delay(1500);
   }
@@ -196,6 +236,20 @@ void pingTargetWritten(BLEDevice central, BLECharacteristic characteristic) {
   pingRTT.writeValue(rtt);
   WiFi.end();
   startBLE();
+}
+
+void saveConfigurationToEEPROM() {
+
+  Configuration config;
+
+  Serial.println("Saving configuration to EEPROM");
+  
+  wifiNetworkSSID.toCharArray(config.ssid, 128);
+  wifiPassword.toCharArray(config.wifiPwd, 128);
+  configurationLockPassword.toCharArray(config.configPwd, 128);
+  config.locked = true;
+
+  flash_configuration.write(config);
 }
 
 void loop() {
