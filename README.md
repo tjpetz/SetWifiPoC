@@ -37,7 +37,7 @@ WiFi you must execute this sequence of commands.
     BLE.advertise();        // begin advertising.
 ```
 
-Note, while you need to re-add your service to BLE you should not 
+Note, while you need to re-add your service to BLE you should not
 re-add your characteristics to your service.  If you re-add your
 characteristics you will end up with duplicate characterists.
 
