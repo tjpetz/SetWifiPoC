@@ -1,4 +1,8 @@
 /*
+ * SetWifiPoC
+ * 
+ * Author: tom@tjpetz.com 
+ * 
  * Develop a prototype of a system that will use BLE to allow the
  * device to set parameters.  Once set these should be stored
  * in EEPROM.  The idea for this is that we would configure
@@ -22,7 +26,7 @@
  *    Additionally you must call BLE.disconnect() before calling BLE.end().
  *    Calling disconnect() properly de-inits the driver.  If you don't call
  *    disconnnect() before end() then when you restart the remote BLE device
- *    will see duplication of data because there is data left in buffers.
+ *    you will see duplication of data because there is data left in buffers.
  * 3) While it appeared in prior attempts that it is necessary to wait some
  *    period of time between using BLE and then WiFi and again when switching
  *    back, this no longer is the case.  (It probably never was.)
@@ -168,11 +172,13 @@ void startBLE() {
 void blePeripheralConnect(BLEDevice central) {
   Serial.print("Connected: ");
   Serial.println(central.address());
+  digitalWrite(LED_BUILTIN, HIGH);
 }
 
 void blePeripheralDisconnect(BLEDevice central) {
   Serial.print("Disconnected: ");
   Serial.println(central.address());
+  digitalWrite(LED_BUILTIN, LOW);
 }
 
 void wifiSSIDWritten(BLEDevice central, BLECharacteristic characteristic) {
