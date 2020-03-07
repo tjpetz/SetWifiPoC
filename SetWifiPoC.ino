@@ -106,7 +106,8 @@ void setup() {
   }
   
   pinMode(LED_BUILTIN, OUTPUT);
-
+  digitalWrite(LED_BUILTIN, LOW);
+  
   configureBLE();
   startBLE();
   
@@ -242,6 +243,8 @@ void pingTargetWritten(BLEDevice central, BLECharacteristic characteristic) {
   // save the results in the pingRTT characteristic, turn off wifi and restart BLE.
   BLE.disconnect();
   BLE.end();
+  digitalWrite(LED_BUILTIN, LOW);
+  
   while (WiFi.begin(wifiNetworkSSID.c_str(), wifiPassword.c_str()) != WL_CONNECTED) {
     Serial.println("Waiting for WiFi to connect.");
     delay(1500);
@@ -251,8 +254,10 @@ void pingTargetWritten(BLEDevice central, BLECharacteristic characteristic) {
   Serial.print("Ping time = ");
   Serial.println(rtt);
   pingRTT.writeValue(rtt);
+  
   WiFi.disconnect();
   WiFi.end();
+  
   startBLE();
 }
 
