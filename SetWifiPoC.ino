@@ -11,13 +11,18 @@
  * 1) You cannot simultaneously use BLE and WiFi on the Nano IOT 33
  *    because there is only a single radio.  You use it either or.
  * 2) When switching between radios you must carefully align your
- *    BLE.begin() and BLE.end() with your WiFi.begin() and WiFi.end().
+ *    BLE.begin() and BLE.disconnect(),BLE.end() with your 
+ *    WiFi.begin() and WiFi.disconnect(), WiFi.end().
  *    Make sure you always call the corresponding .end() before calling
  *    the opposite .begin().  If you interlace them e.g. call WiFi.begin()
  *    before calling BLE.end() the WiFi will work but it will fail when
  *    you attempt to return to BLE.  This is because in the driver there
  *    is a set of initialization and deinitialization steps.  And if called
  *    in the wrong order the system is in an inconsistent state.
+ *    Additionally you must call BLE.disconnect() before calling BLE.end().
+ *    Calling disconnect() properly de-inits the driver.  If you don't call
+ *    disconnnect() before end() then when you restart the remote BLE device
+ *    will see duplication of data because there is data left in buffers.
  * 3) While it appeared in prior attempts that it is necessary to wait some
  *    period of time between using BLE and then WiFi and again when switching
  *    back, this no longer is the case.  (It probably never was.)
@@ -60,7 +65,6 @@ char default_pass[] = SECRET_PASS;
 BLEService wifiSettingService("2de598db-ae66-4942-9106-490c3f5e5687");
 BLEStringCharacteristic wifiSSID("15bc7004-c6c0-4d1e-a390-af4a6ee643db", BLERead | BLEWrite, 128);
 BLEStringCharacteristic wifiPWD("01510af0-bdbc-4549-aef8-ef724bba2265", BLEWrite, 128);   // Note, we only allow write
-BLEBooleanCharacteristic wifiEnabled("2cb1beb2-3603-41e3-a9d1-33a5272f3399", BLERead | BLEWrite);
 BLEStringCharacteristic configurationLock("5a622576-7f47-49d7-83fb-6a96ecea03e8", BLEWrite, 128);
 BLEStringCharacteristic configurationUnlock("50ee954b-12b8-4a41-875e-11b8bf1a3506", BLEWrite, 128);
 BLEBooleanCharacteristic configurationIsLocked("e5add166-af0e-4c54-9121-4a34371c638b", BLERead);
@@ -132,7 +136,7 @@ void configureBLE() {
 
   wifiPing.addCharacteristic(pingTarget);
   pingTarget.setEventHandler(BLEWritten, pingTargetWritten);
-  pingTarget.writeValue("");
+  pingTarget.writeValue("localhost");
 
   // We don't need an event handler as this is just a state value.
   wifiPing.addCharacteristic(pingRTT);
@@ -141,6 +145,12 @@ void configureBLE() {
   BLE.setEventHandler(BLEConnected, blePeripheralConnect);
   BLE.setEventHandler(BLEDisconnected, blePeripheralDisconnect);  
   Serial.println("BLE Configured");
+}
+
+void debugBLE() {
+  Serial.print("wifiSSID = "); Serial.println(wifiSSID.value());
+  Serial.print("pingTarget = "); Serial.println(pingTarget.value());
+  Serial.print("rtt = "); Serial.println(pingRTT.value());
 }
 
 void startBLE() {
@@ -224,6 +234,7 @@ void pingTargetWritten(BLEDevice central, BLECharacteristic characteristic) {
   //TODO: Validate that the WiFi sevice is configured.
   // To ping a target we need to end the bluetooth, start the wifi, ping the target
   // save the results in the pingRTT characteristic, turn off wifi and restart BLE.
+  BLE.disconnect();
   BLE.end();
   while (WiFi.begin(wifiNetworkSSID.c_str(), wifiPassword.c_str()) != WL_CONNECTED) {
     Serial.println("Waiting for WiFi to connect.");
@@ -234,6 +245,7 @@ void pingTargetWritten(BLEDevice central, BLECharacteristic characteristic) {
   Serial.print("Ping time = ");
   Serial.println(rtt);
   pingRTT.writeValue(rtt);
+  WiFi.disconnect();
   WiFi.end();
   startBLE();
 }
@@ -251,6 +263,7 @@ void saveConfigurationToEEPROM() {
 
   flash_configuration.write(config);
 }
+
 
 void loop() {
   BLE.poll();
