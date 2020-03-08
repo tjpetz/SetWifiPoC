@@ -22,22 +22,116 @@ local pingRTT_uuid = bluesee.UUID.new('6d8d89cb-e5cd-4f18-8ae3-282b7bb8e58a')
 -- Register the Config service
 bluesee.register_service(config_service_uuid, function(span)
 
-    -- Create a label widget
+    local ssid_display = bluesee.new_widget(bluesee.label)
+    ssid_display.title = "Current SSID"
+    ssid_display.value = ""
+    span:add_widget(ssid_display)
+
+    -- Field to enter the ssid and update button
     local ssid_input = bluesee.new_widget(bluesee.textfield)
     ssid_input.title = "SSID"
     ssid_input.value = ""
-
-    -- Add the label widget to the service panel
     span:add_widget(ssid_input)
+
+    local ssid_button = bluesee.new_widget(bluesee.button)
+    ssid_button.title = "Update SSID"
+
+    local ssid_ch = nil
+    ssid_button.on_click = function()
+        if ssid_ch ~= nil then
+            ssid_ch:write_binary(ssid_input.value)
+            ssid_display.value = ssid_input.value
+        end
+    end
+    span:add_widget(ssid_button)
+ 
+    -- Field to enter the password and an update button
+    local wifipwd_input = bluesee.new_widget(bluesee.textfield)
+    wifipwd_input.title = "Password"
+    wifipwd_input.value = ""
+    span:add_widget(wifipwd_input)
+
+    local password_button = bluesee.new_widget(bluesee.button)
+    password_button.title = "Update Password"
+
+    local password_ch = nil
+
+    password_button.on_click = function()
+        if password_ch ~= nil then
+            password_ch:write_binary(wifipwd_input.value)
+        end
+    end
+    span:add_widget(password_button)
 
     -- Add a divider
     span:add_widget(bluesee.new_widget(bluesee.hr))
 
-    local wifipwd_input = bluesee.new_widget(bluesee.textfield)
-    wifipwd_input.title = "Password"
-    wifipwd_input.value = ""
+    -- lock management fields and buttons
+    local isunlocked_ch = nil
 
-    span:add_widget(wifipwd_input)
+    local isLocked_label = bluesee.new_widget(bluesee.label)
+    isLocked_label.title = "Is Locked: "
+    span:add_widget(isLocked_label)
+
+    local lock_input = bluesee.new_widget(bluesee.textfield)
+    lock_input.title = "Lock Password"
+    lock_input.value = ""
+    span:add_widget(lock_input)
+
+    local lock_button = bluesee.new_widget(bluesee.button)
+    lock_button.title = "Lock"
+
+    local lock_ch = nil
+
+    lock_button.on_click = function()
+        if lock_ch ~= nil then
+            lock_ch:write_binary(lock_input.value)
+        end
+    end
+    span:add_widget(lock_button)
+
+    local unlock_input = bluesee.new_widget(bluesee.textfield)
+    unlock_input.title = "Unlock Password"
+    unlock_input.value = ""
+    span:add_widget(unlock_input)
+
+    local unlock_button = bluesee.new_widget(bluesee.button)
+    unlock_button.title = "Unlock"
+
+    local unlock_ch = nil
+
+    unlock_button.on_click = function()
+        if unlock_ch ~= nil then
+            unlock_ch:write_binary(unlock_input.value)
+        end
+    end
+    span:add_widget(unlock_button)
+    
+    -- Add handlers for the characteristics
+    span.on_ch_discovered = function(ch)
+        if ch.uuid == wifiSSID_uuid then
+            ssid_ch = ch
+            local update_function = function()
+                ssid_display.value = ch.value:as_raw_string()
+            end
+            ch:add_read_callback(update_function)
+            ch:read()
+        elseif ch.uuid == wifiPassword_uuid then
+            password_ch = ch
+        elseif ch.uuid == configurationLock_uuid then
+            lock_ch = ch
+        elseif ch.uuid == configurationUnlock_uuid then
+            unlock_ch = ch
+        elseif ch.uuid == configurationIsLocked_uuid then
+            isunlocked_ch = ch
+            local update_function = function()
+                local isLocked = ch.value:unsigned_integer()
+                isLocked_label.value = string.format('%d', isLocked)
+            end
+            ch:add_read_callback(update_function)
+            ch:read()
+        end
+    end
 
  end)
 

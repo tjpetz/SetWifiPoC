@@ -84,7 +84,7 @@ BLEIntCharacteristic pingRTT("6d8d89cb-e5cd-4f18-8ae3-282b7bb8e58a", BLERead);
 
 void setup() {
   Serial.begin(250000);
-  while (!Serial);
+  delay(500);   // allow the serial to start but don't wait for it if it's not connected.
 
   // Check EEPROM for a configuration
   Configuration config;
